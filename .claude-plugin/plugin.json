@@ -1,0 +1,1 @@
+{ "name": "slot-machine", "version": "0.1.0", "description": "ASCII slot machine pane that spins on every prompt, with sound", "types": "./types/index.d.ts" }

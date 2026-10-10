@@ -1,0 +1,5 @@
+{
+  "name": "claude-code-slot-machine",
+  "owner": { "name": "Phelix Chen" },
+  "plugins": [{ "name": "slot-machine", "source": "./" }]
+}
