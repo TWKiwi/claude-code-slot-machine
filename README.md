@@ -12,7 +12,8 @@ An ASCII slot machine that lives in a pane beside your Claude Code conversation.
 - 3x3 reels with 5 paylines: three rows and two diagonals
 - Running profit/loss, kept across sessions
 - Free spins with the lever (`l`) or `/slot`
-- Minimize with `MIN` (`m`) or by closing the pane: prompts keep spinning in the background, wins pop a toast and the status line keeps the last result and P/L; `/slot` brings the pane back
+- Minimize with `MIN` (`m`): prompts keep spinning in the background, wins pop a toast and the status line keeps the last result and P/L; `/slot` brings the pane back
+- Close the pane (x) to turn the machine off: no spins, no toasts, no status line; `/slot` turns it back on
 - RTP drawn per session between 92.5% and 97.5%
 - Three win tiers (win, big win, jackpot) with their own animation and sound
 - Stays 40 columns wide so the conversation keeps its room
