@@ -19,6 +19,8 @@ const multOf = (result: number[]) => (totalPay(result, 1) / LINES) * (RTP / BASE
 let isBusy = false
 // minimized: the pane stays closed, spins and settles go on, wins show as a toast and on the status line
 let isMinimized = false
+// off: the person closed the pane with its x, no spins, no status line until /slot
+let isOff = false
 const openPane = ($: EngineInterface) => $.ui.open({ id: PANE, title: 'Slots', columns: 40 })
 const signed = (v: number) => `${v < 0 ? '-' : '+'}${usd(Math.abs(v))}`
 const minimize = async ($: EngineInterface, isMin: boolean) => {
@@ -28,12 +30,17 @@ const minimize = async ($: EngineInterface, isMin: boolean) => {
   const { net } = await read($, machine)
   $.ui.status(`SLOT (minimized, /slot to restore)  P/L ${signed(net)}`)
 }
+const turnOff = ($: EngineInterface, isOffNow: boolean) => {
+  isOff = isOffNow
+  void $.store.set('off', isOffNow)
+  if (isOffNow) $.ui.status(undefined)
+}
 // session cost at the last settlement; the next round's stake is the cost added since
 let baseUsd: number | undefined
 const sessionUsd = async ($: EngineInterface) => (await $.session.usage()).cost?.usd ?? 0
 
 async function spin($: EngineInterface, isFree: boolean) {
-  if (isBusy) return
+  if (isBusy || isOff) return
   isBusy = true
   // hot-loaded mid-session there was no session.start: the first staked spin sets the base
   if (!isFree && baseUsd === undefined) baseUsd = await sessionUsd($)
@@ -64,7 +71,7 @@ async function settle($: EngineInterface) {
   const stake = Math.max(0, now - (baseUsd ?? now))
   baseUsd = now
   const m = await read($, machine)
-  if (m.stake !== null) return
+  if (m.stake !== null || isOff) return
   const payout = stake * multOf(m.result)
   const net = m.net + payout - stake
   const syms = m.result.map(i => SYMS[i]).join(' ')
@@ -82,12 +89,15 @@ export const register: Register = on => {
     const saved = await $.store.get('net')
     if (typeof saved === 'number') await update($, machine, c => ({ ...c, net: saved }))
     baseUsd = await sessionUsd($)
+    isOff = (await $.store.get('off')) === true
+    if (isOff) return next(e)
     if ((await $.store.get('minimized')) === true) await minimize($, true)
     else void openPane($)
     return next(e)
   })
 
   on('command.run', { command: 'slot' }, async $ => {
+    turnOff($, false)
     await minimize($, false)
     await openPane($)
     void spin($, true).catch(() => {})
@@ -96,7 +106,7 @@ export const register: Register = on => {
 
   on('prompt.submit', ($, e, next) => {
     // a hot reload has no session.start, so bring the pane back on every prompt
-    if (!isMinimized) void openPane($).catch(() => {})
+    if (!isMinimized && !isOff) void openPane($).catch(() => {})
     void spin($, false).catch(() => {})
     return next(e)
   })
@@ -117,9 +127,9 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // the person closing the pane minimizes it too, so the next prompt does not bring it back
+  // the person closing the pane turns the machine off; /slot turns it back on
   on('ui.close', async ($, e, next) => {
-    if (e.id === PANE && e.origin.kind === 'person') await minimize($, true).catch(() => {})
+    if (e.id === PANE && e.origin.kind === 'person') turnOff($, true)
     return next(e)
   })
 
