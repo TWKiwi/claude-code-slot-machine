@@ -3,22 +3,7 @@
 An ASCII slot machine that lives in a pane beside your Claude Code conversation.
 Every prompt you send pulls the lever, and **the API cost of that turn is your stake**.
 
-```
-+-----------------------------+
-|      * SLOT  MACHINE *      |
-+-----------------------------+
-|                             |   (O)
-|   1 | BEL | LMN | BAR | <   |  PULL
-|   2 | BAR |  7  | BEL |     |    |
-|   3 |  7  | BAR | LMN |     |    |
-|                             |
-| LINES: 1-3 rows 4=\ 5=/     |
-+-----------------------------+
-|     P/L     +$0.412         |
-|     STAKE   $0.183          |
-|      WIN L1 +$0.366         |
-+-----------------------------+
-```
+![Slot machine demo](assets/demo.gif)
 
 ## Features
 
