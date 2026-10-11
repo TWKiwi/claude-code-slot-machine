@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Machine } from '../types'
-import { LINES, linePays, STOP_TICKS, SYMS, TICK_MS, tierOf, totalPay, usd } from './shared'
+import { BASE_RTP, drawRtp, LINES, linePays, STOP_TICKS, SYMS, TICK_MS, tierOf, totalPay, usd } from './shared'
 
 const PANE = 'slot'
 const machine = atom(
@@ -11,10 +11,23 @@ const machine = atom(
 )
 const WIN_SOUND = { small: 'win.wav', big: 'big.wav', jackpot: 'jackpot.wav' } as const
 const STOP_MS = STOP_TICKS.map(t => t * TICK_MS)
-// payout per dollar staked
-const multOf = (result: number[]) => totalPay(result, 1) / LINES
+// ponytail: drawn per module load (a session or a hot reload), per-spin drift averages out to 95% anyway
+const RTP = drawRtp()
+// payout per dollar staked, scaled from the paytable to this session's RTP
+const multOf = (result: number[]) => (totalPay(result, 1) / LINES) * (RTP / BASE_RTP)
 
 let isBusy = false
+// minimized: the pane stays closed, spins and settles go on, wins show as a toast and on the status line
+let isMinimized = false
+const openPane = ($: EngineInterface) => $.ui.open({ id: PANE, title: 'Slots', columns: 40 })
+const signed = (v: number) => `${v < 0 ? '-' : '+'}${usd(Math.abs(v))}`
+const minimize = async ($: EngineInterface, isMin: boolean) => {
+  isMinimized = isMin
+  void $.store.set('minimized', isMin)
+  if (!isMin) return $.ui.status(undefined)
+  const { net } = await read($, machine)
+  $.ui.status(`SLOT (minimized, /slot to restore)  P/L ${signed(net)}`)
+}
 // session cost at the last settlement; the next round's stake is the cost added since
 let baseUsd: number | undefined
 const sessionUsd = async ($: EngineInterface) => (await $.session.usage()).cost?.usd ?? 0
@@ -59,7 +72,8 @@ async function settle($: EngineInterface) {
     ...cur, stake, payout, net, last: `${syms} ${payout ? '+' + usd(payout) : '-' + usd(stake)}`,
   }))
   void $.store.set('net', net)
-  if (payout > 0) $.ui.toast(`SLOT: ${syms}  stake ${usd(stake)} -> +${usd(payout)}`)
+  if (payout > 0) $.ui.toast(`SLOT: ${syms}  stake ${usd(stake)} -> +${usd(payout)}`, { timeoutMs: isMinimized ? 8000 : 4000 })
+  if (isMinimized) $.ui.status(`SLOT ${syms} ${payout ? 'WIN +' + usd(payout) : '-' + usd(stake)}  P/L ${signed(net)}  (/slot)`)
 }
 
 export const register: Register = on => {
@@ -68,19 +82,21 @@ export const register: Register = on => {
     const saved = await $.store.get('net')
     if (typeof saved === 'number') await update($, machine, c => ({ ...c, net: saved }))
     baseUsd = await sessionUsd($)
-    void $.ui.open({ id: PANE, title: 'Slots', columns: 40 })
+    if ((await $.store.get('minimized')) === true) await minimize($, true)
+    else void openPane($)
     return next(e)
   })
 
   on('command.run', { command: 'slot' }, async $ => {
-    await $.ui.open({ id: PANE, title: 'Slots', columns: 40 })
+    await minimize($, false)
+    await openPane($)
     void spin($, true).catch(() => {})
     return { text: 'Slot machine spinning (free spin).' }
   })
 
   on('prompt.submit', ($, e, next) => {
     // a hot reload has no session.start, so bring the pane back on every prompt
-    void $.ui.open({ id: PANE, title: 'Slots', columns: 40 }).catch(() => {})
+    if (!isMinimized) void openPane($).catch(() => {})
     void spin($, false).catch(() => {})
     return next(e)
   })
@@ -94,6 +110,16 @@ export const register: Register = on => {
   on('ui.message', async ($, e, next) => {
     const d = e.data as { type?: string }
     if (d?.type === 'pull') void spin($, true).catch(() => {})
+    if (d?.type === 'minimize') {
+      await minimize($, true)
+      await $.ui.close({ id: PANE }).catch(() => {})
+    }
+    return next(e)
+  })
+
+  // the person closing the pane minimizes it too, so the next prompt does not bring it back
+  on('ui.close', async ($, e, next) => {
+    if (e.id === PANE && e.origin.kind === 'person') await minimize($, true).catch(() => {})
     return next(e)
   })
 

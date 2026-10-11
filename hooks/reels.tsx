@@ -29,7 +29,8 @@ const center = (s: string, n: number) => {
   return ' '.repeat(Math.max(0, left)) + s + ' '.repeat(Math.max(0, n - s.length - left))
 }
 const cell = (i: number) => center(SYMS[((i % 5) + 5) % 5], 5)
-const frame = (inner: string) => `| ${center(inner, W - 4)} |`
+// clip to the inner width so no framed line can exceed W columns
+const frame = (inner: string) => `| ${center(inner.slice(0, W - 4), W - 4)} |`
 const bar = '+' + '-'.repeat(W - 2) + '+'
 const PARTY = ['red', 'yellow', 'green', 'cyan', 'magenta'] as const
 // win effects: chasing marquee lights on the cabinet edge and coins falling past the reels
@@ -120,7 +121,7 @@ const Machine: ClientModule<Props, Local> = (p, surface) => {
   const msg = isSpinning
     ? 'spinning...'
     : p.spinId === 0
-      ? 'submit a prompt or pull the lever'
+      ? 'prompt or PULL to spin'
       : showing >= 0
         ? `LINE ${showing + 1} WIN x${pays[showing]}`
         : p.isFree
@@ -152,6 +153,7 @@ const Machine: ClientModule<Props, Local> = (p, surface) => {
           <Button key="lever" label="PULL" hotkey="l" onPress={() => surface.post({ type: 'pull' })} />
           <Text color="red">{'  |'}</Text>
           <Text>{'  |'}</Text>
+          <Button key="min" label="MIN" hotkey="m" onPress={() => surface.post({ type: 'minimize' })} />
         </Box>
       </Box>
       <Box>

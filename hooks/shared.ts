@@ -1,7 +1,7 @@
 export const SYMS = ['7', 'BAR', 'BEL', 'CHR', 'LMN']
 // multiplier of the bet for three of a kind, by symbol index
-export const TRIPLE = [100, 50, 20, 10, 5]
-export const PAIR_CHERRY = 2
+export const TRIPLE = [50, 25, 15, 10, 7]
+export const PAIR_CHERRY = 1
 export const STOP_TICKS = [14, 20, 26]
 export const TICK_MS = 60
 
@@ -21,6 +21,10 @@ export const gridSym = (result: number[], reel: number, row: number) =>
 export const linePays = (result: number[], bet: number): number[] =>
   PAYLINES.map(l => payoutFor(l.map((row, reel) => gridSym(result, reel, row)), bet))
 export const totalPay = (result: number[], bet: number) => linePays(result, bet).reduce((a, b) => a + b, 0)
+// return per dollar staked of the paytable: per line P(triple of a symbol) = 1/125, P(exactly two CHR) = 12/125
+export const BASE_RTP = (TRIPLE.reduce((a, b) => a + b, 0) + 12 * PAIR_CHERRY) / 125
+// the RTP each session plays at, drawn once in [92.5%, 97.5%]; payouts scale from BASE_RTP to it
+export const drawRtp = (rand = Math.random()) => 0.925 + 0.05 * rand
 export const usd = (v: number) => `$${v.toFixed(3)}`
 // win tier of a spin from its per-line multipliers: a line of 7s is the jackpot, 10x+ total is big
 export type Tier = 'none' | 'small' | 'big' | 'jackpot'

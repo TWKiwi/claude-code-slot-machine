@@ -1,6 +1,6 @@
 import { test, expect, mock } from 'claude-code/testing'
 
-import { linePays, tierOf, totalPay } from './shared'
+import { BASE_RTP, drawRtp, linePays, tierOf, totalPay } from './shared'
 
 const PANE = { plugin: 'slot-machine', surface: 'terminal', component: 'Pane', requestId: 'slot', props: {} } as never
 const TURN = { answer: '', durationMs: 1, isAborted: false, turnId: 't', reason: 'answer' } as never
@@ -19,12 +19,19 @@ const stubs = (on: Parameters<Parameters<typeof test>[1]>[1], cost: { usd: numbe
   return mock.clock(on)
 }
 
+test('no pane line is wider than 31 columns', async ($, on) => {
+  stubs(on, { usd: 0 })
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^.{32,}$/, in: 'slot' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^.{31}$/, in: 'slot' })).toBeDefined()
+})
+
 test('prompt.submit spins; the turn cost becomes the stake; lever is a free spin', async ($, on) => {
   const cost = { usd: 0 }
   const played: string[] = []
   const clock = stubs(on, cost, played)
   const ui = await $.ui.mount(PANE)
-  expect(await ui.find({ text: 'submit a prompt', in: 'slot' })).toBeDefined()
+  expect(await ui.find({ text: 'prompt or PULL', in: 'slot' })).toBeDefined()
 
   expect(await $.prompt.submit({ text: 'hello' })).toBeDefined()
   await ui.advance(100)
@@ -57,10 +64,10 @@ test('a subagent turn does not settle the stake', async ($, on) => {
 
 // result = middle symbol per reel; strip order 7 BAR BEL CHR LMN, rows show idx-1, idx, idx+1
 test('paylines: multi-line, both diagonals', () => {
-  expect(linePays([1, 1, 1], 1)).toEqual([100, 50, 20, 0, 0])
-  expect(totalPay([1, 1, 1], 2)).toBe(340)
-  expect(linePays([1, 0, 4], 1)).toEqual([0, 0, 0, 100, 0])
-  expect(linePays([4, 0, 1], 1)).toEqual([0, 0, 0, 0, 100])
+  expect(linePays([1, 1, 1], 1)).toEqual([50, 25, 15, 0, 0])
+  expect(totalPay([1, 1, 1], 2)).toBe(180)
+  expect(linePays([1, 0, 4], 1)).toEqual([0, 0, 0, 50, 0])
+  expect(linePays([4, 0, 1], 1)).toEqual([0, 0, 0, 0, 50])
 })
 
 test('winning spin flashes a winning line, then settles on the summary', async ($, on) => {
@@ -86,6 +93,34 @@ test('winning spin flashes a winning line, then settles on the summary', async (
 test('win tiers', () => {
   expect(tierOf([0, 0, 0, 0, 0])).toBe('none')
   expect(tierOf([5, 0, 0, 0, 0])).toBe('small')
-  expect(tierOf([50, 0, 0, 0, 0])).toBe('big')
-  expect(tierOf([0, 0, 0, 100, 0])).toBe('jackpot')
+  expect(tierOf([25, 25, 0, 0, 0])).toBe('big')
+  expect(tierOf([0, 0, 0, 50, 0])).toBe('jackpot')
+})
+
+test('RTP: paytable return matches every reel outcome, session RTP stays in 92.5-97.5%', () => {
+  let sum = 0
+  for (let a = 0; a < 5; a++) for (let b = 0; b < 5; b++) for (let c = 0; c < 5; c++) sum += totalPay([a, b, c], 1) / 5
+  expect(Math.abs(sum / 125 - BASE_RTP)).toBeLessThan(1e-9)
+  expect(drawRtp(0)).toBe(0.925)
+  expect(Math.abs(drawRtp(1) - 0.975)).toBeLessThan(1e-9)
+})
+
+test('minimize closes the pane and prompts keep spinning without reopening it', async ($, on) => {
+  const cost = { usd: 0 }
+  const clock = stubs(on, cost)
+  const calls: string[] = []
+  on('ui.open', async () => (calls.push('open'), { value: { isPlaced: true } }) as never)
+  on('ui.close', async () => (calls.push('close'), { value: undefined }) as never)
+  on('ui.status', async (_$, e) => (calls.push(`status ${JSON.stringify(e)}`), { value: undefined }) as never)
+  const ui = await $.ui.mount(PANE)
+  await ui.press({ key: 'min' })
+  await ui.advance(100)
+  expect(calls).toContain('close')
+  calls.length = 0
+  await $.prompt.submit({ text: 'bg' })
+  cost.usd = 0.1
+  await $.turn.complete(TURN)
+  await clock.advance(5000)
+  expect(calls).not.toContain('open')
+  expect(calls.join()).toContain('P/L')
 })
